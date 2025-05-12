@@ -1,3 +1,5 @@
+from __future__ import annotations
+import copy
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
@@ -12,8 +14,8 @@ import numpy as np
 # print(vits16)
 
 def main():
-    K= 20
-    N = 20
+    K= 2
+    N = 10
     CIFAR100 = datasets.CIFAR100(
       root="data",
       download=True,
@@ -23,14 +25,57 @@ def main():
     client_datasets = split_data_non_iid(train_dataset, K, N)
     test_split(client_datasets)
 
-
 def create_label_indexing(dataset):
-    label_index = {}
-    for i in range(100):
-        label_index.update({i:[]})
-    for index, (_, label) in enumerate(dataset):
-        label_index[label].append(index)
+    label_index = {i: [] for i in range(100)}
+    for idx, (_, label) in enumerate(dataset):
+        label_index[label].append(idx)
     return label_index
+
+
+'''
+def split_data_non_iid(dataset, K, N_c=20, seed=42):
+    # as far I can tell N_c does exactly nothing
+    random.seed(seed)
+    label_index = create_label_indexing(dataset)
+    client_indices = [[] for _ in range(K)]
+
+    class_to_clients = {label: set() for label in range(100)} # why sets?
+    for label in range(100):
+        selected_clients = random.sample(range(K), k=max(1, K // 5)) # why define variable k? why K // 5?
+        class_to_clients[label].update(selected_clients)
+
+    # why are these two for loops?
+    client_to_classes = {client: set() for client in range(K)} # why do you need both client_to_classes and class_to_clients?
+    for label in range(100):
+        for client in class_to_clients[label]:
+            if len(client_to_classes[client]) < N_c:
+                client_to_classes[client].add(label)
+
+    # what
+    all_labels = list(range(100)) # ???
+    for client in range(K):
+        while len(client_to_classes[client]) < N_c:
+            label = random.choice(all_labels)
+            client_to_classes[client].add(label) # is this dict even used?
+            class_to_clients[label].add(client)
+
+    for label, indices in label_index.items():
+        random.shuffle(indices) # why? this is done at the end
+        clients = list(class_to_clients[label])
+        num_clients = len(clients)
+
+        # im pretty sure this is just the split(l,n) function
+        split_size = len(indices) // num_clients
+        for i, client in enumerate(clients):
+            start = i * split_size
+            end = (i + 1) * split_size if i < num_clients - 1 else len(indices)
+            client_indices[client].extend(indices[start:end])
+
+    for indices in client_indices:
+        random.shuffle(indices)
+
+    return [Subset(dataset, indices) for indices in client_indices]
+'''
 
 def split_data_non_iid(dataset, K, N_c = 100):
     index_split = [ [] for _ in range(K) ]
@@ -62,7 +107,8 @@ def split_data_non_iid(dataset, K, N_c = 100):
 
     return [Subset(dataset, indices) for indices in index_split]
 
-def split(l, n):
+def split(l: list, n: int) -> list[list]:
+    '''splits a list into n parts'''
     split_list = []
     for i in range(0, n):
         split_list.append(l[i::n])
@@ -88,7 +134,8 @@ def test_split(client_datasets):
         for datapoint in client_dataset:
             label = datapoint[1]
             occurrences[label] += 1
-        print(occurrences)
+        #print(occurrences)
+        print(f"Client {client_id}: No. of nonzero elements: {np.count_nonzero(occurrences)} | Avg., stdev. of nonzero elements: {occurrences[occurrences>0].mean()}, {occurrences[occurrences>0].std()}") # should be N_c non-zero elements!
         plt.bar(range(100), occurrences, bottom=bottom, label=client_id)
         plt.xlabel("Class label")
         plt.ylabel("Number of samples")
@@ -109,46 +156,3 @@ main()
 #         print(occurences)
 #         plt.hist(occurences, stacked=True, bins=100)
 #     plt.show()
-
-# def split_data_non_iid(dataset, K, N_c=20, seed=42):
-#     # as far I can tell N_c does exactly nothing
-#     random.seed(seed)
-#     label_index = create_label_indexing(dataset)
-#     client_indices = [[] for _ in range(K)]
-
-#     class_to_clients = {label: set() for label in range(100)} # why sets?
-#     for label in range(100):
-#         selected_clients = random.sample(range(K), k=max(1, K // 5)) # why define variable k? why K // 5?
-#         class_to_clients[label].update(selected_clients)
-
-#     # why are these two for loops?
-#     client_to_classes = {client: set() for client in range(K)} # why do you need both client_to_classes and class_to_clients?
-#     for label in range(100):
-#         for client in class_to_clients[label]:
-#             if len(client_to_classes[client]) < N_c: 
-#                 client_to_classes[client].add(label)
-    
-#     # what
-#     all_labels = list(range(100)) # ???
-#     for client in range(K):
-#         while len(client_to_classes[client]) < N_c:
-#             label = random.choice(all_labels)
-#             client_to_classes[client].add(label) # is this dict even used?
-#             class_to_clients[label].add(client)
-
-#     for label, indices in label_index.items():
-#         random.shuffle(indices) # why? this is done at the end
-#         clients = list(class_to_clients[label])
-#         num_clients = len(clients)
-
-#         # im pretty sure this is just the split(l,n) function
-#         split_size = len(indices) // num_clients 
-#         for i, client in enumerate(clients):
-#             start = i * split_size
-#             end = (i + 1) * split_size if i < num_clients - 1 else len(indices)
-#             client_indices[client].extend(indices[start:end])
-
-#     for indices in client_indices:
-#         random.shuffle(indices)
-
-#     return [Subset(dataset, indices) for indices in client_indices]
